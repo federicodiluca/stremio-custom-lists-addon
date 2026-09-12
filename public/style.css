@@ -80,7 +80,11 @@ button:disabled { opacity: .5; cursor: default; }
   font-weight: 500;
 }
 
-.row { display: flex; gap: 10px; flex-wrap: wrap; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.grow { flex: 1; min-width: 180px; }
+ol.muted { margin: 0; padding-left: 1.3em; }
+ol.muted li { margin-bottom: 4px; }
+ol.muted b { color: var(--text); }
 section { display: flex; flex-direction: column; gap: 12px; }
 
 .list {
@@ -128,4 +132,19 @@ section { display: flex; flex-direction: column; gap: 12px; }
   background: transparent;
   border: 1px solid var(--line);
   color: var(--muted);
+  width: 100%;
 }
+
+.item select {
+  width: 100%;
+  margin-bottom: 3px;
+  padding: 2px 4px;
+  font: inherit;
+  font-size: .72rem;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+#results:empty { display: none; }

@@ -8,10 +8,21 @@
   <h1>Le mie liste</h1>
   <p class="lede">
     Aggiungi i titoli da Stremio: nella pagina di un film o di una serie trovi
-    le voci <b>➕ Aggiungi a…</b> tra le fonti.
+    le voci <b>➕ Aggiungi a…</b> tra le fonti. Le liste compaiono poi nella
+    <b>Home</b> e in <b>Discover</b>, sotto la tab <b>Liste</b> — non nella tab
+    Library, che è nativa e chiusa agli addon.
   </p>
 
   <section>
+    <h2>Cerca e aggiungi</h2>
+    <div class="row">
+      <input id="q" class="grow" placeholder="Titolo di un film o di una serie" />
+    </div>
+    <div id="results" class="items"></div>
+  </section>
+
+  <section>
+    <h2>Liste</h2>
     <div class="row">
       <input id="newName" placeholder="Nome della nuova lista" class="grow" />
       <button id="add">Crea lista</button>
@@ -21,12 +32,27 @@
   <section id="lists"></section>
 
   <section>
-    <label>Link di installazione</label>
-    <input id="url" readonly />
-    <a id="install" class="btn ghost">Reinstalla in Stremio</a>
+    <label>Add-on Repository URL</label>
+    <div class="row">
+      <input id="url" class="grow" readonly />
+      <button id="copy" class="ghost">Copia</button>
+    </div>
     <p class="muted">
-      Dopo aver creato o rinominato una lista, reinstalla l'addon: Stremio
-      rilegge i cataloghi solo all'installazione.
+      Dopo aver creato o rinominato una lista devi reinstallare l'addon:
+      Stremio rilegge i cataloghi solo quando l'URL viene incollato nel campo
+      <b>Add-on Repository URL</b>. Premere Uninstall e Install non basta.
+    </p>
+  </section>
+
+  <section>
+    <h2>Portare le liste in cima alla Home</h2>
+    <p class="muted">
+      L'ordine delle righe in Home segue l'ordine degli addon, e Stremio non
+      permette di cambiarlo dall'app. Si fa con
+      <a href="https://stremioaddonmanager.org/" target="_blank" rel="noopener"
+        >Stremio Addon Manager</a
+      >: carichi i tuoi addon, trascini <b>Le mie liste</b> in cima, salvi e
+      riavvii Stremio.
     </p>
   </section>
 </main>
@@ -36,9 +62,12 @@
   const api = `/api/u/${token}`;
   const $ = (id) => document.getElementById(id);
 
-  const manifest = `${location.origin}/u/${token}/manifest.json`;
-  $('url').value = manifest;
-  $('install').href = manifest.replace(/^https?:/, 'stremio:');
+  $('url').value = `${location.origin}/u/${token}/manifest.json`;
+
+  $('copy').addEventListener('click', async () => {
+    await navigator.clipboard.writeText($('url').value);
+    $('copy').textContent = 'Copiato';
+  });
 
   async function send(method, path, body) {
     const res = await fetch(api + path, {
@@ -49,6 +78,55 @@
     if (!res.ok) throw new Error((await res.json()).err ?? res.statusText);
     return res.json();
   }
+
+  let lists = [];
+
+  function resultCard(hit) {
+    const card = document.createElement('div');
+    card.className = 'item';
+
+    const img = document.createElement('img');
+    img.src = hit.poster ?? '';
+    img.alt = '';
+    img.loading = 'lazy';
+
+    const label = document.createElement('p');
+    label.className = 'name';
+    label.textContent = hit.releaseInfo ? `${hit.name} (${hit.releaseInfo})` : hit.name;
+
+    const pick = document.createElement('select');
+    pick.append(
+      ...lists.map((l) => {
+        const opt = document.createElement('option');
+        opt.value = l.id;
+        opt.textContent = l.name;
+        return opt;
+      }),
+    );
+
+    const go = document.createElement('button');
+    go.textContent = 'Aggiungi';
+    go.addEventListener('click', async () => {
+      go.disabled = true;
+      await send('POST', `/lists/${pick.value}/items`, { id: hit.id, type: hit.type });
+      go.textContent = 'Aggiunto';
+      load();
+    });
+
+    card.append(img, label, pick, go);
+    return card;
+  }
+
+  let searchTimer;
+  $('q').addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    const q = $('q').value.trim();
+    if (q.length < 2) return $('results').replaceChildren();
+    searchTimer = setTimeout(async () => {
+      const { results } = await send('GET', `/search?q=${encodeURIComponent(q)}`);
+      $('results').replaceChildren(...results.map(resultCard));
+    }, 300);
+  });
 
   function render(lists) {
     $('lists').replaceChildren(
@@ -121,7 +199,7 @@
   }
 
   async function load() {
-    const { lists } = await send('GET', '/lists');
+    ({ lists } = await send('GET', '/lists'));
     render(lists);
   }
 

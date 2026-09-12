@@ -14,12 +14,22 @@
   <button id="create">Crea il mio addon</button>
 
   <section id="result" hidden>
-    <label>Link di installazione</label>
-    <input id="url" readonly />
+    <label>Add-on Repository URL</label>
     <div class="row">
-      <a id="install" class="btn">Installa in Stremio</a>
-      <a id="manage" class="btn ghost">Gestisci le liste</a>
+      <input id="url" class="grow" readonly />
+      <button id="copy" class="ghost">Copia</button>
     </div>
+
+    <ol class="muted">
+      <li>Apri <b>Stremio desktop</b> (non la versione web: da HTTPS non può
+        contattare un server locale in HTTP).</li>
+      <li>Vai in <b>Addons</b> e incolla l'URL nel campo
+        <b>Add-on Repository URL</b>, poi premi Invio.</li>
+      <li>Nel popup premi <b>Install</b>.</li>
+    </ol>
+
+    <a id="manage" class="btn ghost">Gestisci le liste</a>
+
     <p class="warn">
       Salva questo link: è l'unica chiave per le tue liste e non è recuperabile.
     </p>
@@ -34,13 +44,16 @@
     const res = await fetch('/api/users', { method: 'POST' });
     const { token } = await res.json();
 
-    const manifest = `${location.origin}/u/${token}/manifest.json`;
-    $('url').value = manifest;
-    $('install').href = manifest.replace(/^https?:/, 'stremio:');
+    $('url').value = `${location.origin}/u/${token}/manifest.json`;
     $('manage').href = `/u/${token}/configure`;
     $('result').hidden = false;
     $('create').hidden = true;
     localStorage.setItem('ccl:token', token);
+  });
+
+  $('copy').addEventListener('click', async () => {
+    await navigator.clipboard.writeText($('url').value);
+    $('copy').textContent = 'Copiato';
   });
 
   const saved = localStorage.getItem('ccl:token');

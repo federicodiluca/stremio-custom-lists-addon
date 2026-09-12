@@ -6,6 +6,24 @@ export const addonRouter = Router();
 
 const CATALOG_PREFIX = 'ccl';
 
+// A custom type gets its own tab in Discover and lets one list hold movies and
+// series in a single row. Stremio has no way to supply an icon for it: unknown
+// types fall back to the built-in `other` entry. The string is the tab label,
+// so keep it short and URL-safe.
+const LIST_TYPE = 'Liste';
+
+// Stremio refuses addons that don't send CORS headers, and it calls us from
+// its own origin — so this has to come before the user lookup replies 404.
+addonRouter.use('/u/:token', (req, res, next) => {
+  res.set({
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': '*',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+  });
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
+
 addonRouter.use('/u/:token', (req, res, next) => {
   const user = getUser(req.params.token);
   if (!user) return res.status(404).json({ err: 'unknown user' });
@@ -13,38 +31,23 @@ addonRouter.use('/u/:token', (req, res, next) => {
   next();
 });
 
-// Stremio calls these from clients on other origins.
-addonRouter.use('/u/:token', (req, res, next) => {
-  res.set('Access-Control-Allow-Origin', '*');
-  next();
-});
-
-function catalogId(listId, type) {
-  return `${CATALOG_PREFIX}:${listId}:${type}`;
+function catalogId(listId) {
+  return `${CATALOG_PREFIX}:${listId}`;
 }
 
 function parseCatalogId(id) {
-  const [prefix, listId, type] = id.split(':');
+  const [prefix, listId] = id.split(':');
   if (prefix !== CATALOG_PREFIX) return null;
-  return { listId, type };
+  return { listId };
 }
 
-function buildManifest(user) {
-  const catalogs = [];
-  for (const list of user.lists) {
-    // A Stremio catalog carries a single type, so a mixed list surfaces as one
-    // row per type it actually holds.
-    const types = new Set(list.items.map((i) => i.type));
-    if (types.size === 0) types.add('movie');
-    for (const type of types) {
-      catalogs.push({
-        id: catalogId(list.id, type),
-        type,
-        name: list.name,
-        extra: [{ name: 'skip', isRequired: false }],
-      });
-    }
-  }
+export function buildManifest(user) {
+  const catalogs = user.lists.map((list) => ({
+    id: catalogId(list.id),
+    type: LIST_TYPE,
+    name: list.name,
+    extra: [{ name: 'skip', isRequired: false }],
+  }));
 
   return {
     id: `com.federicodiluca.customlists.${user.token.slice(0, 8)}`,
@@ -53,10 +56,10 @@ function buildManifest(user) {
     description:
       'Liste personalizzate di film e serie. Aggiungi titoli con un click dalla pagina del contenuto.',
     resources: [
-      'catalog',
+      { name: 'catalog', types: [LIST_TYPE] },
       { name: 'stream', types: ['movie', 'series'], idPrefixes: ['tt'] },
     ],
-    types: ['movie', 'series'],
+    types: [LIST_TYPE, 'movie', 'series'],
     catalogs,
     idPrefixes: ['tt'],
     behaviorHints: { configurable: true, configurationRequired: false },
@@ -80,12 +83,13 @@ addonRouter.get('/u/:token/catalog/:type/*', async (req, res) => {
   if (!list) return res.status(404).json({ err: 'unknown list' });
 
   const skip = Number(new URLSearchParams(rawExtra).get('skip')) || 0;
-  const ids = list.items
-    .filter((i) => i.type === req.params.type)
-    .slice(skip, skip + 100);
+  const page = list.items.slice(skip, skip + 100);
 
+  // Each entry keeps its real type (movie/series) even though the catalog is
+  // typed `Liste`: the detail page routes on the item's own type, so titles
+  // open normally and the usual stream addons are queried.
   const metas = await Promise.all(
-    ids.map(async (item) => {
+    page.map(async (item) => {
       const meta = await getMeta(item.type, item.id);
       return meta ? toCatalogEntry(meta) : null;
     }),
@@ -107,9 +111,12 @@ addonRouter.get('/u/:token/stream/:type/*', (req, res) => {
     const action = present ? 'remove' : 'add';
     return {
       name: 'Le mie liste',
-      title: present ? `✓ Rimuovi da "${list.name}"` : `➕ Aggiungi a "${list.name}"`,
+      // `title` is deprecated and newer clients ignore it, so the label has to
+      // be in `description` — without it the row renders blank.
+      description: present
+        ? `✓ Rimuovi da "${list.name}"`
+        : `➕ Aggiungi a "${list.name}"`,
       externalUrl: `${base}/u/${req.user.token}/action/${action}/${list.id}/${type}/${id}`,
-      behaviorHints: { notWebReady: true },
     };
   });
 

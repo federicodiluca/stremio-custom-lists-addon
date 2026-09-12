@@ -17,6 +17,27 @@ export async function getMeta(type, id) {
   return meta;
 }
 
+/** Searches both types at once; results keep their real `type`. */
+export async function search(query) {
+  const perType = await Promise.all(
+    ['movie', 'series'].map(async (type) => {
+      const url = `${BASE}/catalog/${type}/top/search=${encodeURIComponent(query)}.json`;
+      const res = await fetch(url);
+      if (!res.ok) return [];
+      const { metas = [] } = await res.json();
+      return metas.map((m) => ({
+        id: m.id,
+        type,
+        name: m.name,
+        poster: m.poster,
+        releaseInfo: m.releaseInfo,
+      }));
+    }),
+  );
+
+  return perType.flat().sort((a, b) => (b.releaseInfo ?? '').localeCompare(a.releaseInfo ?? ''));
+}
+
 /** Trims a Cinemeta meta down to what a catalog row needs. */
 export function toCatalogEntry(meta) {
   return {

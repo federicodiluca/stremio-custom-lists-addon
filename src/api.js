@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getMeta } from './cinemeta.js';
+import { getMeta, search } from './cinemeta.js';
 import {
   addItem,
   addList,
@@ -29,6 +29,32 @@ apiRouter.use('/api/u/:token', (req, res, next) => {
 
 apiRouter.get('/api/u/:token/lists', (req, res) => {
   res.json({ lists: req.user.lists });
+});
+
+apiRouter.get('/api/u/:token/search', async (req, res) => {
+  const q = String(req.query.q ?? '').trim();
+  if (q.length < 2) return res.json({ results: [] });
+  res.json({ results: await search(q) });
+});
+
+apiRouter.post('/api/u/:token/lists/:listId/items', async (req, res) => {
+  const { id, type } = req.body ?? {};
+  if (!/^tt\d+$/.test(id ?? '') || !['movie', 'series'].includes(type)) {
+    return res.status(400).json({ err: 'id and type required' });
+  }
+
+  const meta = await getMeta(type, id);
+  if (!meta) return res.status(502).json({ err: 'metadata not found' });
+
+  const list = await addItem(req.user, req.params.listId, {
+    id,
+    type,
+    name: meta.name,
+    poster: meta.poster,
+    releaseInfo: meta.releaseInfo ?? meta.year,
+  });
+  if (!list) return res.status(404).json({ err: 'unknown list' });
+  res.json({ list });
 });
 
 apiRouter.post('/api/u/:token/lists', async (req, res) => {
