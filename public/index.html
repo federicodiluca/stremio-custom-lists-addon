@@ -1,0 +1,54 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Le mie liste — addon Stremio</title>
+<link rel="stylesheet" href="/style.css" />
+
+<main>
+  <h1>Le mie liste</h1>
+  <p class="lede">
+    Crea liste personalizzate di film e serie e aggiungi titoli con un click
+    direttamente dalla pagina del contenuto in Stremio.
+  </p>
+
+  <button id="create">Crea il mio addon</button>
+
+  <section id="result" hidden>
+    <label>Link di installazione</label>
+    <input id="url" readonly />
+    <div class="row">
+      <a id="install" class="btn">Installa in Stremio</a>
+      <a id="manage" class="btn ghost">Gestisci le liste</a>
+    </div>
+    <p class="warn">
+      Salva questo link: è l'unica chiave per le tue liste e non è recuperabile.
+    </p>
+  </section>
+</main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  $('create').addEventListener('click', async () => {
+    $('create').disabled = true;
+    const res = await fetch('/api/users', { method: 'POST' });
+    const { token } = await res.json();
+
+    const manifest = `${location.origin}/u/${token}/manifest.json`;
+    $('url').value = manifest;
+    $('install').href = manifest.replace(/^https?:/, 'stremio:');
+    $('manage').href = `/u/${token}/configure`;
+    $('result').hidden = false;
+    $('create').hidden = true;
+    localStorage.setItem('ccl:token', token);
+  });
+
+  const saved = localStorage.getItem('ccl:token');
+  if (saved) {
+    const back = document.createElement('a');
+    back.className = 'btn ghost';
+    back.href = `/u/${saved}/configure`;
+    back.textContent = 'Riprendi le liste salvate su questo browser';
+    document.querySelector('main').append(back);
+  }
+</script>

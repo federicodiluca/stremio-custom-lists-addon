@@ -1,0 +1,137 @@
+<!doctype html>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Gestisci le mie liste</title>
+<link rel="stylesheet" href="/style.css" />
+
+<main>
+  <h1>Le mie liste</h1>
+  <p class="lede">
+    Aggiungi i titoli da Stremio: nella pagina di un film o di una serie trovi
+    le voci <b>➕ Aggiungi a…</b> tra le fonti.
+  </p>
+
+  <section>
+    <div class="row">
+      <input id="newName" placeholder="Nome della nuova lista" class="grow" />
+      <button id="add">Crea lista</button>
+    </div>
+  </section>
+
+  <section id="lists"></section>
+
+  <section>
+    <label>Link di installazione</label>
+    <input id="url" readonly />
+    <a id="install" class="btn ghost">Reinstalla in Stremio</a>
+    <p class="muted">
+      Dopo aver creato o rinominato una lista, reinstalla l'addon: Stremio
+      rilegge i cataloghi solo all'installazione.
+    </p>
+  </section>
+</main>
+
+<script type="module">
+  const token = location.pathname.split('/')[2];
+  const api = `/api/u/${token}`;
+  const $ = (id) => document.getElementById(id);
+
+  const manifest = `${location.origin}/u/${token}/manifest.json`;
+  $('url').value = manifest;
+  $('install').href = manifest.replace(/^https?:/, 'stremio:');
+
+  async function send(method, path, body) {
+    const res = await fetch(api + path, {
+      method,
+      headers: body ? { 'content-type': 'application/json' } : undefined,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    if (!res.ok) throw new Error((await res.json()).err ?? res.statusText);
+    return res.json();
+  }
+
+  function render(lists) {
+    $('lists').replaceChildren(
+      ...lists.map((list) => {
+        const el = document.createElement('article');
+        el.className = 'list';
+
+        const head = document.createElement('header');
+        const name = document.createElement('input');
+        name.className = 'grow';
+        name.value = list.name;
+        name.addEventListener('change', async () => {
+          await send('PATCH', `/lists/${list.id}`, { name: name.value });
+          load();
+        });
+
+        const count = document.createElement('span');
+        count.className = 'count';
+        count.textContent = `${list.items.length} titoli`;
+
+        const del = document.createElement('button');
+        del.className = 'danger';
+        del.textContent = 'Elimina';
+        del.addEventListener('click', async () => {
+          if (!confirm(`Eliminare la lista "${list.name}"?`)) return;
+          await send('DELETE', `/lists/${list.id}`);
+          load();
+        });
+
+        head.append(name, count, del);
+        el.append(head);
+
+        if (list.items.length) {
+          const items = document.createElement('div');
+          items.className = 'items';
+          for (const item of list.items) {
+            const card = document.createElement('div');
+            card.className = 'item';
+
+            const img = document.createElement('img');
+            img.src = item.poster ?? '';
+            img.alt = '';
+            img.loading = 'lazy';
+
+            const label = document.createElement('p');
+            label.className = 'name';
+            label.textContent = item.name;
+
+            const rm = document.createElement('button');
+            rm.textContent = 'Rimuovi';
+            rm.addEventListener('click', async () => {
+              await send('DELETE', `/lists/${list.id}/items/${item.id}`);
+              load();
+            });
+
+            card.append(img, label, rm);
+            items.append(card);
+          }
+          el.append(items);
+        } else {
+          const empty = document.createElement('p');
+          empty.className = 'muted';
+          empty.textContent = 'Ancora vuota.';
+          el.append(empty);
+        }
+
+        return el;
+      }),
+    );
+  }
+
+  async function load() {
+    const { lists } = await send('GET', '/lists');
+    render(lists);
+  }
+
+  $('add').addEventListener('click', async () => {
+    const name = $('newName').value.trim();
+    if (!name) return;
+    await send('POST', '/lists', { name });
+    $('newName').value = '';
+    load();
+  });
+
+  load();
+</script>
